@@ -1,0 +1,138 @@
+import os
+import time
+import openai
+from config import OPENAI_API_KEY, GOOGLE_PROJECT, GOOGLE_REGION, VECTOR_DB
+from utils import Log_Experiment
+from tqdm import tqdm
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Chroma
+
+class LLM_Pipeline:
+    BASE_PROMPT = """You are a fraud detection assistant. Answer in exactly three lines:
+        LABEL: FRAUD or NOT_FRAUD
+        CONFIDENCE: decimal between 0 and 1
+        REASON: short explanation sentence.
+
+        Transaction:
+        {txn_text}
+
+        Now provide the answer adhering to the format exactly.
+        """
+
+    FEW_SHOT_PROMPT = """You are a fraud detection assistant. Answer in exactly three lines:
+        LABEL: FRAUD or NOT_FRAUD
+        CONFIDENCE: decimal between 0 and 1
+        REASON: short explanation sentence.
+
+        Example 1:
+        Transaction: Transaction TID: 100 — Amount: $5 — ...
+        LABEL: NOT_FRAUD
+        CONFIDENCE: 0.05
+        REASON: Small routine purchase.
+
+        Example 2:
+        Transaction: Transaction TID: 101 — Amount: $2000 — Device: new — ...
+        LABEL: FRAUD
+        CONFIDENCE: 0.95
+        REASON: Very large unusual purchase on a new device.
+
+        Now classify:
+        Transaction:
+        {txn_text}
+
+        Answer now.
+        """
+   
+    @staticmethod
+    def call_openai_chat(prompt, model="get-4o-mini", temperature=0.0, max_tokens=150):
+        if not OPENAI_API_KEY:
+            raise EnvironmentError("OPENAI_API_KEY not set in environment.")
+
+        response = openai.ChatCompetition.create(
+                        model=model,
+                        messages=[],
+                        temeperature=temperature,
+                        max_tokens=max_tokens)
+
+        return response['choices'][0]['message']['content']
+    
+    @staticmethod
+    def call_gemini_vertex(prompt, model="gemini-1.5", temperature=0.0):
+        """
+        Placeholder function for Vertex AI (Gemini). Requires google-cloud-aiplatform set-up.
+        Implement auth & request per Vertex AI docs.
+        """
+        # In production you'd call Vertex AI as per their SDK:
+        # from google.cloud import aiplatform
+        # client = aiplatform.gapic.PredictionServiceClient(client_options=...)
+        # ... prepare instances and call client.predict(...)
+        raise NotImplementedError("Gemini / Vertex AI call needs Google setup. See README for steps.")
+    
+    # RAG (Retrieval Augmented Generation) optional: embeddings + vector DB (Chroma)
+    @staticmethod
+    def build_vector_index(docs_texts, persist_dir="vector_store"):
+        ids=[str(d[0]) for d in docs_texts]
+        texts=[d[1] for d in docs_texts]
+        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+        chroma_collection = Chroma.from_texts(texts, embeddings, ids=ids, persist_directory=persist_dir)
+        chroma_collection.persist()
+        return chroma_collection
+
+    @staticmethod
+    def retrieve_similar(chroma_collection, query_text, k=3):
+        docs=chroma_collection.similarity_search(query_text, k=k)
+        results=[]
+        for d in docs:
+            results.append((d.metadata.get('source') if 'source' in d.metadata else None, d.page_content))
+        return results
+    
+    @staticmethod
+    def run_llm_on_df(df, engine="openai", model="gpt-4o-mini", prompt_type="base", use_rag=False, rag_index=None, temperature=0.0):
+      
+        rows_to_log=[]
+        parsed_results=[]
+        prompt_template=LLM_Pipeline.FEW_SHOT_PROMPT if prompt_type == "few=shot" else LLM_Pipeline.BASE_PROMPT
+
+        for idx, row in tqdm(df.iterrows(), total=len(df)):
+            txn_text=row["txm_text"]
+            prompt = prompt_template.format(txn_text=txn_text)
+            if use_rag and rag_index is not None:
+                try:
+                    similar=Log_Experiment.retrieve_similar (rag_index, txn_text, k=3)
+                    retrieved_block = "\n\nRetrieved similar transactions:\n"
+                    for i, (rid, text) in enumerate (similar):
+                        retrieved_block += f"Example {i+1}: \n{text}\n"
+                    prompt = retrieved_block + "\n\n" + prompt
+                except Exception:
+                    pass
+
+            if engine == "openai":
+                raw = LLM_Pipeline.call_openai_chat(prompt, model=model, temperature=temperature)
+            elif engine == "gemini":
+                raw = LLM_Pipeline.call_gemini_vertex(prompt, model=model, temperature=temperature)
+            else:
+                raise ValueError("engine must be 'openai' or 'gemini'")
+
+            label_str, conf, reason = Log_Experiment.safe_parse_llm_response(raw)
+            if label_str:
+                normalised_label = 'FRAUD' if str(label_str).strip().lower().startswith('fraud') else 'NOT_FRAUD'
+            else:
+                normalised_label = 'NOT_FRAUD'
+            
+            conf_val = conf if conf is not None else 0.5  # default if missing
+
+            parsed_results.append({
+                'transaction_id': row['transaction_id'],
+                'true_label': int(row['label']),
+                'predicted_label': normalised_label,
+                'predicted_prob': float(conf_val),
+                'model_name': f"LLM_{engine}_{model}",
+                'prompt_variant': prompt_type,
+                'reason': reason or raw,
+                'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+            })
+            rows_to_log.append(parsed_results[-1])
+
+        # Log batch to CSV
+        Log_Experiment.append_experiment_log(rows_to_log)
+        return parsed_results

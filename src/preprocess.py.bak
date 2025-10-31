@@ -1,0 +1,59 @@
+import os
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from config import RANDOM_STATE
+
+class CreditCard_Preporcessing:
+  @staticmethod
+  def load_clean(path="/data/creditcard.csv"):
+    try:
+      #Check for valid path
+      if len(path.strip()) <= 0:
+        raise Exception ("The Path is empty")
+
+      absolute_path = path
+      if os.path.isabs(path):
+        absolute_path = os.getcwd() + absolute_path
+
+      print(absolute_path)
+      file = Path(absolute_path)    
+      
+      if not file.exists():
+        raise Exception ("Path does not exists")
+
+      df=pd.read_csv(absolute_path)
+      df=df.rename(columns={'Class': 'label'})
+      df=df.dropna()
+
+      print(df["Time"].min(), df["Time"].max())
+
+      # Create transaction text for LLM
+      df['txn_text'] = df.apply(lambda x: f"Time: {x['Time']} — Amount: ${x['Amount']}", axis=1)
+          
+      return df    
+      
+    except Exception as e:
+      # Handles the exception
+      print(f"An error occurred: {e}")
+
+  @staticmethod
+  def split( df, test_size=0.15, val_size=0.15, random_state=RANDOM_STATE):
+      X=df.drop(columns=["label"])
+      y=df["label"]
+
+      X_train_val, X_test, y_train_val, y_test=train_test_split(X, y, test_size=test_size, stratify=y, random_state=random_state)
+
+      val_fraction=val_size/(1-test_size)
+      X_train, X_val, y_train, y_val=train_test_split(X_train_val, y_train_val, test_size=val_fraction, stratify=y_train_val, random_state=random_state)
+
+      return X_train, X_val, X_test, y_train, y_val, y_test 
+
+if __name__ == '__main__':
+    df = CreditCard_Preporcessing.load_clean("/data/creditcard.csv")
+    print (df.head())
+    print (df.tail())
+    X_train, X_val, X_test, y_train, y_val, y_test = CreditCard_Preporcessing.split(df)
+    print("Total Records:" + str(len(df)))
+    print("Train size:", len(X_train), "Validation size:", len(X_val), "Test size:", len(X_test))

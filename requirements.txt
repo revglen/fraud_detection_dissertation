@@ -1,0 +1,30 @@
+pandas>=1.5
+numpy>=1.24
+scikit-learn>=1.2
+matplotlib>=3.6
+seaborn>=0.12
+plotly==5.16.0   
+joblib>=1.2
+streamlit>=1.24
+openai>=0.27.0
+google-cloud-aiplatform>=1.26.0  # for Vertex AI (Gemini) - optional
+langchain>=0.0.280               # check latest compatible version
+chromadb>=0.3.24                 # or faiss if preferred
+python-dotenv>=1.0.0
+wordcloud>=1.8
+tqdm>=4.65
+notebook==7.0.5
+jupyterlab==4.2.0
+python-dotenv==1.0.0 
+transformers>=4.35
+accelerate>=0.20
+sentence-transformers>=2.2
+chromadb>=0.3.24
+langchain>=0.0.280
+bitsandbytes>=0.40
+peft
+huggingface-hub
+huggingface_hub[hf_xet]
+tiktoken
+sentencepiece 
+protobuf

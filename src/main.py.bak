@@ -1,0 +1,29 @@
+
+import pandas as pd
+from ml_pipeline import Pipeline_Builder
+from preprocess1 import CreditCard_Preporcessing
+
+class Main:
+    def main(self):
+        df = CreditCard_Preporcessing.load_clean("/data/creditcard.csv")
+        print (df.head())
+        print (df.tail())
+        X_train, X_val, X_test, y_train, y_val, y_test = CreditCard_Preporcessing.split(df)
+        print("Total Records:" + str(len(df)))
+        print("Train size:", len(X_train), "Validation size:", len(X_val), "Test size:", len(X_test))
+
+        # For later use in logs
+        transaction_ids = X_test.index.tolist()
+
+        # Train and evaluate Random Forest
+        print("\n🔹 Training Random Forest...")
+        rf_model, rf_preds, rf_probs = Pipeline_Builder.build_ml_pipeline(X_train, y_train, X_test, model_type='rf')
+        Pipeline_Builder.evaluate_ml(y_test, rf_preds, "RandomForest", transaction_ids)
+
+        # Train and evaluate Logistic Regression
+        print("\n🔹 Training Logistic Regression...")
+        log_model, log_preds, log_probs = Pipeline_Builder.build_ml_pipeline(X_train, y_train, X_test, model_type='logreg')
+        Pipeline_Builder.evaluate_ml(y_test, log_preds, "LogisticRegression", transaction_ids)
+
+if __name__ == '__main__':
+    Main().main()

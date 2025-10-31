@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DATA_DIR=os.getenv("DATA_DIR", "/data")
 CREDITCARD_CSV=os.path.join(DATA_DIR, "creditcard.csv")
@@ -13,7 +16,7 @@ GOOGLE_REGION = os.getenv("GOOGLE_REGION", "us-central1")
 VECTOR_DB=os.getenv("VECTOR_DB", "chroma")
 RANDOM_STATE=int(os.getenv("RANDOM_STATE", 42))
 
-
+HUGGINGFACE_HUB_TOKEN = os.getenv("HUGGINGFACE_HUB_TOKEN")
 
 LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
 #LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "mistralai/Mistral-7B-v0.1")

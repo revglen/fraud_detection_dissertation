@@ -18,7 +18,7 @@ RANDOM_STATE=int(os.getenv("RANDOM_STATE", 42))
 
 HUGGINGFACE_HUB_TOKEN = os.getenv("HUGGINGFACE_HUB_TOKEN")
 
-LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
+#LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
 #LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "mistralai/Mistral-7B-v0.1")
-#LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "TheBloke/Mistral-7B-Instruct-v0.1-GGUF")
-LOCAL_LLAMA_ID=os.getenv("LOCAL_LLAMA_ID", "meta-llama/Llama-2-7b-chat-hf") 
+LOCAL_MISTRAL_ID=os.getenv("LOCAL_MISTRAL_ID", "TheBloke/TinyMistral-1.1B-Instruct")
+LOCAL_LLAMA_ID=os.getenv("LOCAL_LLAMA_ID", "TinyLlama/TinyLlama-1.1B-Chat-v1.0") 

@@ -9,6 +9,8 @@ from typing import List, Tuple
 try:
     from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, GenerationConfig
     from transformers import StoppingCriteria, StoppingCriteriaList
+    from transformers import TrainingArguments, Trainer, DataCollatorForLanguageModeling
+    from datasets import Dataset
     import torch
 except Exception:
     AutoTokenizer = None
@@ -96,38 +98,20 @@ class LLM_Pipeline:
     @staticmethod
     def load_local_model(model_name:str, device:str = None, use_4bit=False):
         """
-            Load a HF model and tokenizer for local inference.
-            model_name: HF model id (e.g., "mistralai/mistral-7b-instruct" or local path)
-            device: "cuda" or "cpu" or None to auto-select
-            use_4bit: if True, try to load model in 4-bit (requires bitsandbytes)
-            Returns (tokenizer, model, device_str)
+        Load TinyLlama or Mistral 1B model for CPU inference.
         """
+        print(f"Loading lightweight model {model_name} on {device}...")
 
-        if AutoTokenizer is None or AutoModelForCausalLM is None:
-            raise ImportError("Install transformers/torch to use local models: pip install transformers torch")
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, token=HUGGINGFACE_HUB_TOKEN)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float32,
+            device_map={"": "cpu"} ,
+            token=HUGGINGFACE_HUB_TOKEN
+        )
 
-        if device is None:
-            device = "cuda" if torch and torch.cuda.is_available() else "cpu"
-
-        load_kwargs = {}
-        if use_4bit:
-            load_kwargs.update({
-                #"load_in_4bit": True,
-                "load_in_8bit":True,
-                "device_map": "auto",
-                "torch_dtype":"auto"
-            })
-        else:
-            load_kwargs.update({
-                "torch_dtype": torch.float16 if device.startswith("cuda") else torch.float32,
-                    "device_map": "auto" if device.startswith("cuda") else None
-            })
-
-        print(f"Loading model {model_name} on {device} (4bit={use_4bit}) — this may take a while...")
-        tokeniser=AutoTokenizer.from_pretrained(model_name, use_fast=True, token=HUGGINGFACE_HUB_TOKEN)
-        model=AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs, token=HUGGINGFACE_HUB_TOKEN)
         model.eval()
-        return tokeniser, model, device
+        return tokenizer, model, device
     
     @staticmethod
     def local_generate(tokeniser, model, prompt:str, max_new_token:int=32, temperature:float = 0.0, device: str = None) -> str:
@@ -424,7 +408,7 @@ class LLM_Pipeline:
             raw_responses = []
             counter=1
             for prompt in prompts:
-                print(f"Process Counter: {counter}")
+                print(f"\nProcess Counter: {counter}")
                 try:
                     if engine == "hf_inference":
                         resp = LLM_Pipeline.call_hf_inference_api(prompt, hf_model=model_identifier)
@@ -466,3 +450,68 @@ class LLM_Pipeline:
         # Append rows to experiment CSV
         Log_Experiment.append_experiment_log(rows_to_log)
         return rows_to_log
+    
+    # Transfer Knowledge
+    @staticmethod
+    def fine_tune_llm_on_fraud_data(model_name, train_df, output_dir="models/fine_tuned_llm", num_train_epochs=1):
+        """
+        Fine-tune a small Hugging Face model (TinyLlama / Mistral-1B / Flan-T5)
+        on your labeled fraud dataset using text prompts.
+
+        Args:
+            model_name (str): HF model ID, e.g. 'TinyLlama/TinyLlama-1.1B-Chat-v1.0'
+            train_df (pd.DataFrame): must contain columns ['txn_text','label']
+            output_dir (str): folder to save fine-tuned weights
+            num_train_epochs (int): how many epochs to train (1–3 on CPU)
+        """
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        print(f"\n🔹 Starting fine-tuning for {model_name} on CPU")
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+        model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float32)
+
+        # Prepare dataset: convert each row to simple prompt-response pairs
+        def format_prompt(example):
+            prompt = f"Transaction:\n{example['txn_text']}\n\nIs this fraud? "
+            label_text = "FRAUD" if example["label"] == 1 else "NOT_FRAUD"
+            return {"text": f"{prompt}{label_text}"}
+
+        dataset = Dataset.from_pandas(train_df)
+        dataset = dataset.map(format_prompt)
+
+        tokenized_ds = dataset.map(
+            lambda e: tokenizer(e["text"], truncation=True, padding="max_length", max_length=256),
+            batched=True,
+            remove_columns=dataset.column_names
+        )
+
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+        training_args = TrainingArguments(
+            output_dir=output_dir,
+            overwrite_output_dir=True,
+            num_train_epochs=num_train_epochs,
+            per_device_train_batch_size=2,     # CPU-friendly
+            learning_rate=5e-5,
+            logging_steps=10,
+            save_strategy="epoch",
+            save_total_limit=1,
+            report_to="none",
+            fp16=False,
+            dataloader_num_workers=0
+        )
+
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=tokenized_ds,
+            data_collator=data_collator
+        )
+
+        trainer.train()
+        trainer.save_model(output_dir)
+        tokenizer.save_pretrained(output_dir)
+
+        print(f"✅ Fine-tuned model saved to {output_dir}")
+        return output_dir

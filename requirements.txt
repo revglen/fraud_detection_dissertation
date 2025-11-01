@@ -28,3 +28,4 @@ huggingface_hub[hf_xet]
 tiktoken
 sentencepiece 
 protobuf
+datasets==2.19.0

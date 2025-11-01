@@ -5,7 +5,7 @@ from preprocess import Preporcessing
 from ml_pipeline import ML_Pipeline
 from llm_pipeline import LLM_Pipeline
 from evaluation import Evaluation
-from config import RANDOM_STATE, LOCAL_MISTRAL_ID
+from config import RANDOM_STATE, LOCAL_MISTRAL_ID, LOCAL_LLAMA_ID
 
 class Experiment:
     """
@@ -61,7 +61,15 @@ class Experiment:
         if use_local_llm:
             print("Running Mistralai on test set...")
             LLM_Pipeline.huggingface_login()
-            llm_results = LLM_Pipeline.run_local_llm_on_df(llm_test_df, engine="local_mistral", model_identifier=LOCAL_MISTRAL_ID,
+
+            # Fine-tune first - Transfer Knowledge 
+            tuned_model_path = LLM_Pipeline.fine_tune_llm_on_fraud_data(
+                model_name=LOCAL_LLAMA_ID,
+                train_df=llm_test_df,          # same split you use for ML
+                num_train_epochs=1
+            )
+
+            llm_results = LLM_Pipeline.run_local_llm_on_df(llm_test_df, engine="local_llama",  model_identifier=tuned_model_path,
                                 prompt_type="base", use_rag=use_rag, rag_collection=rag_index,
                                 max_new_tokens=64, temperature=0.0, device="cpu")
         else:

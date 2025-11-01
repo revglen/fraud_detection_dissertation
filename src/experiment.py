@@ -78,7 +78,7 @@ class Experiment:
             
         # Summarise
         print("Comparing model metrics...")
-        models_to_compare = ["RandomForest", "LogisticRegression", "LLM_openai_gpt-4o-mini"]
+        models_to_compare = ["RandomForest", "LogisticRegression", LOCAL_LLAMA_ID]
         # note: LLM model_name in logs uses pattern "LLM_openai_gpt-4o-mini"
         
         comp = Evaluation.compare_models(models_to_compare)
